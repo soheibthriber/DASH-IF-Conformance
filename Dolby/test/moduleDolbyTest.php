@@ -64,6 +64,27 @@ class ModuleDolbyTest extends TestCase
         }
     }
     
+    /**
+     * more recenet PHPUnit versions have a name() method
+     */
+    private function getTestName(): string
+    {
+        // For recent  PHPUnit ex 12.x
+        if (method_exists($this, 'name')) {
+            return $this->name();
+        }
+        // For older PHPUnit example 9.x
+        if (method_exists($this, 'getName')) {
+            return $this->getName();
+        }
+        // Fallback
+        $trace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 2);
+        if (isset($trace[1]['function'])) {
+            return $trace[1]['function'];
+        }
+        return "unknown";
+    }
+    
     protected function setUp(): void
     {
         // Remember original state
@@ -71,7 +92,7 @@ class ModuleDolbyTest extends TestCase
         $this->originalArgumentParser = $argumentParser ?? null;
         
         // Log test name if verbose
-        $this->logTestInfo($this->getName());
+        $this->logTestInfo($this->getTestName());
     }
     
     protected function tearDown(): void
