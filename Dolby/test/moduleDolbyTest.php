@@ -1,6 +1,14 @@
 <?php
 use PHPUnit\Framework\TestCase;
 
+
+// Define interface for mocking representation objects
+interface DolbyRepresentationInterface {
+    public function getCodecs();
+    public function getMimeType();
+}
+
+
 class ModuleDolbyTest extends TestCase
 {
     private $originalArgumentParser;
@@ -26,15 +34,20 @@ class ModuleDolbyTest extends TestCase
      */
     public static function setUpBeforeClass(): void
     {
-        // Check for verbose mode
-        $arguments = $_SERVER['argv'] ?? [];
-        foreach ($arguments as $arg) {
-            if (preg_match('/^-v+$/', $arg)) {
-                self::$verboseEnabled = true;
-                break;
+        // check for environment variable
+        if (getenv('PHPUNIT_VERBOSE') === 'true') {
+            self::$verboseEnabled = true;
+        } else {
+            // Then check for older PHPUnit  -v flag
+            $arguments = $_SERVER['argv'] ?? [];
+            foreach ($arguments as $arg) {
+                if (preg_match('/^-v+$/', $arg)) {
+                    self::$verboseEnabled = true;
+                    break;
+                }
             }
         }
-        
+
         if (self::$verboseEnabled) {
             print("\n\n=== DOLBY MODULE TEST SUMMARY ===\n");
         }
@@ -84,7 +97,6 @@ class ModuleDolbyTest extends TestCase
         }
         return "unknown";
     }
-    
     protected function setUp(): void
     {
         // Remember original state
@@ -184,9 +196,8 @@ class ModuleDolbyTest extends TestCase
                 return true;
             });
         
-        $mockRepresentation = $this->getMockBuilder('stdClass')
-            ->addMethods(['getCodecs', 'getMimeType'])
-            ->getMock();
+        // Use the interface for mocking
+        $mockRepresentation = $this->createMock(DolbyRepresentationInterface::class);
         $mockRepresentation->method('getCodecs')->willReturn('ac-4.02.01.03');
         $mockRepresentation->method('getMimeType')->willReturn('audio/mp4');
         
