@@ -7,6 +7,7 @@ require_once __DIR__ . '/../../Utils/moduleInterface.php';
 require_once __DIR__ . '/../../Utils/moduleLogger.php';
 require_once __DIR__ . '/../../Utils/sessionHandler.php';
 require_once __DIR__ . '/../../Utils/MPDHandler.php';
+require_once __DIR__ . '/../../Utils/MPDUtility.php';
 
 // Set up minimal global objects
 global $argumentParser;

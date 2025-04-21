@@ -2,14 +2,8 @@
 
 namespace DASHIF;
 
-class DAC4
-{
-    public $bitstream_version;
-    public $fs_index;
-    public $frame_rate_index;
-    public $short_program_id;
-    public $n_presentations;
-}
+require_once __DIR__ . '/DolbyClasses.php';
+
 
 $result = array();
 

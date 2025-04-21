@@ -24,7 +24,6 @@ class ModuleDolby extends ModuleInterface
         }
     }
 
-
     public function hookRepresentation()
     {
         parent::hookRepresentation();
@@ -33,22 +32,22 @@ class ModuleDolby extends ModuleInterface
 
     private function validateDolby()
     {
-        include 'impl/validateDolby.php';
+        require_once __DIR__ . '/impl/validateDolby.php';
     }
 
     private function compareTocWithDac4($atomInfo)
     {
-        include 'impl/compareTocWithDac4.php';
+        require_once __DIR__ . '/impl/compareTocWithDac4.php';
     }
 
     private function getDac4($atomInfo)
     {
-        return include 'impl/getDac4.php';
+        return require __DIR__ . '/impl/getDac4.php';
     }
 
     private function getToc($atomInfo)
     {
-        return include 'impl/getToc.php';
+        return require __DIR__ . '/impl/getToc.php';
     }
 }
 

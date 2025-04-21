@@ -26,7 +26,8 @@ class ModuleDolbyTest extends TestCase
         'testCompareTocWithDac4ValidatesVersions' => 'VALIDATION CORE: compareTocWithDac4 validation',
         'testGetTocParsesXmlCorrectly' => 'XML PARSING: Testing TOC data extraction',
         'testGetDac4ParsesXmlCorrectly' => 'XML PARSING: Testing DAC4 data extraction',
-        'testDolbyTestVectorsAvailability' => 'TEST VECTORS: Verifying availability of Dolby test content'
+        'testDolbyTestVectorsAvailability' => 'TEST VECTORS: Verifying availability of Dolby test content',
+        'testValidateOnDemandProfileAC4Content' => 'ON-DEMAND PROFILE: Validating AC-4 in SegmentBase MPD structure'
     ];
     
     /**
@@ -686,7 +687,9 @@ class ModuleDolbyTest extends TestCase
     private function ensureTestVectorsAvailable()
     {
         $vectorsDir = __DIR__ . '/testvectors';
-        $vectorsAvailable = is_dir($vectorsDir) && count(glob("$vectorsDir/*.mpd")) > 0;
+        // Check for directories with the pattern NN_AC4_Vector_N
+        $vectorDirs = is_dir($vectorsDir) ? glob("$vectorsDir/[0-9][0-9]_AC4_Vector_*", GLOB_ONLYDIR) : [];
+        $vectorsAvailable = !empty($vectorDirs);
         
         if (!$vectorsAvailable) {
             if (self::$verboseEnabled) {
@@ -717,11 +720,13 @@ class ModuleDolbyTest extends TestCase
             if (self::$verboseEnabled) {
                 print("\n    " . implode("\n    ", $output));
             }
+            
+            // Refresh directory listing after download
+            $vectorDirs = is_dir($vectorsDir) ? glob("$vectorsDir/[0-9][0-9]_AC4_Vector_*", GLOB_ONLYDIR) : [];
         }
         
-        // Count available vectors
-        $vectors = glob("$vectorsDir/*.mpd");
-        return count($vectors);
+        // Return the count of valid vector directories
+        return count($vectorDirs);
     }
 
     /**
@@ -732,6 +737,7 @@ class ModuleDolbyTest extends TestCase
         $this->logTestInfo("TEST VECTORS: Verifying availability of Dolby test content");
         
         // Attempt to ensure test vectors are available
+        $vectorsDir = __DIR__ . '/testvectors';
         $vectorCount = $this->ensureTestVectorsAvailable();
         
         // Check if we have vectors
@@ -739,19 +745,43 @@ class ModuleDolbyTest extends TestCase
             if ($vectorCount > 0) {
                 print("\n    Found $vectorCount Dolby AC-4 test vectors");
                 
-                // List the first few vectors if verbose mode is enabled
-                $vectorsDir = __DIR__ . '/testvectors';
-                $vectors = glob("$vectorsDir/*.mpd");
-                $maxToShow = min(3, count($vectors));
+                // List vectors by type if verbose mode is enabled
+                $vectorDirs = glob("$vectorsDir/[0-9][0-9]_AC4_Vector_*", GLOB_ONLYDIR);
+                $onDemandVectors = [];
+                $liveVectors = [];
                 
-                print("\n    First $maxToShow vectors:");
-                for ($i = 0; $i < $maxToShow; $i++) {
-                    print("\n    - " . basename($vectors[$i]));
+                foreach ($vectorDirs as $vectorDir) {
+                    $vectorName = basename($vectorDir);
+                    $hasSegmentFiles = !empty(glob("$vectorDir/*.m4s"));
+                    
+                    if ($hasSegmentFiles) {
+                        $liveVectors[] = $vectorName;
+                    } else {
+                        $onDemandVectors[] = $vectorName;
+                    }
                 }
                 
-                if (count($vectors) > $maxToShow) {
-                    print("\n    ... and " . (count($vectors) - $maxToShow) . " more");
+                // Display vector types
+                print("\n    On-Demand profile vectors: " . count($onDemandVectors));
+                print("\n    Live profile vectors: " . count($liveVectors));
+                
+                // Check for media files to ensure vectors are complete
+                $totalMediaFiles = 0;
+                $totalMpdFiles = 0;
+                
+                foreach ($vectorDirs as $vectorDir) {
+                    $mpdFiles = glob("$vectorDir/*.mpd");
+                    $mediaFiles = array_merge(
+                        glob("$vectorDir/*.mp4"), 
+                        glob("$vectorDir/*.m4s")
+                    );
+                    
+                    $totalMpdFiles += count($mpdFiles);
+                    $totalMediaFiles += count($mediaFiles);
                 }
+                
+                print("\n    Total MPD files: $totalMpdFiles");
+                print("\n    Total media files: $totalMediaFiles");
             } else {
                 print("\n    No test vectors found or downloaded");
             }
@@ -759,5 +789,196 @@ class ModuleDolbyTest extends TestCase
         
         // We should have at least one test vector
         $this->assertGreaterThan(0, $vectorCount, "Should have at least one Dolby test vector available");
+        
+        // If we have vectors, verify basic structure
+        if ($vectorCount > 0) {
+            $vectorDirs = glob("$vectorsDir/[0-9][0-9]_AC4_Vector_*", GLOB_ONLYDIR);
+            $sampleDir = $vectorDirs[0]; // Check first vector
+            
+            // Each vector should have an MPD file
+            $this->assertGreaterThan(0, count(glob("$sampleDir/*.mpd")), 
+                "Vector directory should contain an MPD file");
+            
+            // Each vector should have at least one media file
+            $mediaFiles = array_merge(glob("$sampleDir/*.mp4"), glob("$sampleDir/*.m4s"));
+            $this->assertGreaterThan(0, count($mediaFiles), 
+                "Vector directory should contain at least one media file");
+            
+            // Each vector should have an info.txt file
+            $this->assertFileExists("$sampleDir/info.txt", 
+                "Vector directory should contain an info.txt file");
+        }
     }
+
+    /**
+     * Test validation with On-Demand profile AC-4 content
+     */
+    public function testValidateOnDemandProfileAC4Content()
+    {
+        // Ensure we have test vectors available
+        $vectorDir = __DIR__ . "/testvectors/01_AC4_Vector_1";
+        $mpdPath = "$vectorDir/Living_Room_1080p_20_96k_25fps.mpd";
+        $audioFile = "$vectorDir/media-audio-en-ac-4.mp4";
+        $initSegment = "$vectorDir/media-audio-en-ac-4_init.mp4";
+
+        if (!file_exists($mpdPath) || !file_exists($audioFile) || !file_exists($initSegment)) {
+            $this->markTestSkipped("Required test vector files not found for On-Demand profile test");
+            return;
+        }
+
+        $mpdContent = file_get_contents($mpdPath);
+        $mpdXml = new \SimpleXMLElement($mpdContent);
+
+        $id = null;
+        $codecs = null;
+        $bandwidth = null;
+        $audioSamplingRate = null;
+        foreach ($mpdXml->Period as $period) {
+            foreach ($period->AdaptationSet as $adaptationSet) {
+                if ((string)$adaptationSet['contentType'] === 'audio' ||
+                    (string)$adaptationSet['mimeType'] === 'audio/mp4') {
+                    foreach ($adaptationSet->Representation as $representation) {
+                        $reprCodecs = (string)$representation['codecs'];
+                        if (strpos($reprCodecs, 'ac-4') !== false) {
+                            $id = (string)$representation['id'];
+                            $codecs = $reprCodecs;
+                            $bandwidth = (int)$representation['bandwidth'];
+                            $audioSamplingRate = (int)$representation['audioSamplingRate'];
+                            break 3;
+                        }
+                    }
+                }
+            }
+        }
+        $this->assertNotNull($id, "MPD should contain AC-4 representation");
+
+        $sessionId = 'ac4_test_' . time();
+        $sessionDir = sys_get_temp_dir() . '/dashif_sessions/' . $sessionId;
+        $repDir = $sessionDir . '/Period0/AdaptationSet0/Representation0';
+        if (!is_dir($repDir)) {
+            mkdir($repDir, 0777, true);
+        }
+        copy($mpdPath, $repDir . '/' . basename($mpdPath));
+        copy($audioFile, $repDir . '/' . basename($audioFile));
+        copy($initSegment, $repDir . '/' . basename($initSegment));
+
+        $atomInfoPath = $repDir . '/atomInfo.xml';
+        $atomInfoContent = '<?xml version="1.0" encoding="UTF-8"?>
+    <atomlist>
+    <ac4_toc bitstream_version="1" fs_index="1" frame_rate_index="3" short_program_id="0" n_presentations="1"/>
+    <ac4_dsi_v1 bitstream_version="1" fs_index="1" frame_rate_index="3" short_program_id="0" n_presentations="1"/>
+    </atomlist>';
+        file_put_contents($atomInfoPath, $atomInfoContent);
+
+        // --- Capture logger calls ---
+        $testResults = [];
+        $mockLogger = $this->createMock(\DASHIF\ModuleLogger::class);
+        $mockLogger->method('test')
+            ->willReturnCallback(function($spec, $section, $test, $check, $fail_type, $msg_succ, $msg_fail) use (&$testResults) {
+                $testResults[] = [
+                    'spec' => $spec,
+                    'section' => $section,
+                    'test' => $test,
+                    'check' => $check,
+                    'fail_type' => $fail_type,
+                    'msg_succ' => $msg_succ,
+                    'msg_fail' => $msg_fail,
+                ];
+                return true;
+            });
+
+        $mockSession = $this->createMock(\DASHIF\SessionHandler::class);
+        $mockSession->method('getSelectedRepresentationDir')->willReturn($repDir);
+
+        $features = [
+            'Period' => [
+                0 => [
+                    'AdaptationSet' => [
+                        0 => [
+                            'Representation' => [
+                                0 => [
+                                    'id' => $id,
+                                    'codecs' => $codecs,
+                                    'mimeType' => 'audio/mp4',
+                                    'bandwidth' => $bandwidth,
+                                    'audioSamplingRate' => $audioSamplingRate
+                                ]
+                            ],
+                            'codecs' => null,
+                            'mimeType' => 'audio/mp4'
+                        ]
+                    ]
+                ]
+            ]
+        ];
+
+        $mockMpdHandler = $this->createMock(\DASHIF\MPDHandler::class);
+        $mockMpdHandler->method('getSelectedPeriod')->willReturn(0);
+        $mockMpdHandler->method('getSelectedAdaptationSet')->willReturn(0);
+        $mockMpdHandler->method('getSelectedRepresentation')->willReturn(0);
+        $mockMpdHandler->method('getFeatures')->willReturn($features);
+
+        global $logger, $session, $mpdHandler;
+        $originalLogger = $logger;
+        $originalSession = $session;
+        $originalMpdHandler = $mpdHandler;
+
+        $logger = $mockLogger;
+        $session = $mockSession;
+        $mpdHandler = $mockMpdHandler;
+
+        try {
+            $module = new \DASHIF\ModuleDolby();
+            $refClass = new \ReflectionClass('\DASHIF\ModuleDolby');
+            $refEnabled = $refClass->getProperty('enabled');
+            $refEnabled->setAccessible(true);
+            $refEnabled->setValue($module, true);
+
+            $validateMethod = $refClass->getMethod('validateDolby');
+            $validateMethod->setAccessible(true);
+            $validateMethod->invoke($module);
+
+            $this->assertNotEmpty($testResults, "Logger should have been called with test results");
+            foreach ($testResults as $i => $result) {
+                $msg = sprintf(
+                    "[ASSERT] Test #%d: %s => %s",
+                    $i + 1,
+                    $result['test'],
+                    $result['check'] ? "PASS" : "FAIL"
+                );
+                print($msg . "\n");
+                $this->assertTrue($result['check'], "Validation check failed: " . $result['test']);
+            }
+        } finally {
+            $logger = $originalLogger;
+            $session = $originalSession;
+            $mpdHandler = $originalMpdHandler;
+
+            if (is_dir($sessionDir)) {
+                $this->removeDirectory($sessionDir);
+            }
+            if (file_exists('/tmp/dolby_debug.log')) {
+                unlink('/tmp/dolby_debug.log');
+            }
+        }
+    }
+ 
+ 
+    /**
+     * Helper method to recursively remove a directory
+     */
+    private function removeDirectory($dir) {
+        if (!is_dir($dir)) {
+            return;
+        }
+        
+        $files = array_diff(scandir($dir), ['.', '..']);
+        foreach ($files as $file) {
+            $path = "$dir/$file";
+            is_dir($path) ? $this->removeDirectory($path) : unlink($path);
+        }
+        
+        return rmdir($dir);
+    }
+
 }
