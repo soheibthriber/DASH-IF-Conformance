@@ -151,10 +151,11 @@ function processAdaptationSetOfCurrentPeriod($detailedSegmentOutput = true)
 
     $adaptation_sets = $period['AdaptationSet'];
     $adaptationSetCount = $adaptation_sets == null ? 0 : sizeof($adaptation_sets);
+    echo "DEBUG: Total AdaptationSets: $adaptationSetCount\n";
     while ($mpdHandler->getSelectedAdaptationSet() < $adaptationSetCount) {
         if ($logger->getModuleVerdict("HEALTH") == "FAIL") {
             break;
-        }
+         }
         $adaptation_set = $adaptation_sets[$mpdHandler->getSelectedAdaptationSet()];
         $representations = $adaptation_set['Representation'];
 
@@ -178,6 +179,18 @@ function processAdaptationSetOfCurrentPeriod($detailedSegmentOutput = true)
                     $module->hookBeforeRepresentation();
                 }
             }
+            // Get current indices from mpdHandler
+            $currentPeriod = $mpdHandler->getSelectedPeriod();
+            $currentAdaptationSet = $mpdHandler->getSelectedAdaptationSet();
+            $currentRepresentation = $mpdHandler->getSelectedRepresentation();
+
+            // Get IDs from the arrays (if present)
+            $adaptationSetId = isset($adaptation_set['id']) ? $adaptation_set['id'] : $currentAdaptationSet;
+            $representationId = isset($representation['id']) ? $representation['id'] : $currentRepresentation;
+            $mimeType = isset($representation['mimeType']) ? $representation['mimeType'] : 'unknown';
+
+            echo "DEBUG: Top-level loop: Period $currentPeriod, AdaptationSet $adaptationSetId, Representation $representationId, mimeType: $mimeType\n";
+
 
             validate_segment(
                 $adaptationDirectory,

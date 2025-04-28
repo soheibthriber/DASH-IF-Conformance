@@ -40,6 +40,40 @@ function validate_segment(
     if ($is_dolby) {
         $validatorWrapper->enableFeature('Dolby');
     }
+
+    echo "DEBUG: Checking representation:\n";
+    print_r($representation);
+
+    if (
+        (isset($representation['mimeType']) && strpos($representation['mimeType'], 'mp4') !== false && isset($representation['codecs']) && $representation['codecs'] === 'wvtt')
+    ) {
+        echo "DEBUG: Skipping subtitle/text track Representation ID: " . (isset($representation['id']) ? $representation['id'] : 'unknown') . "\n";
+        return null;
+    }
+
+
+    // WebM detection logic
+    if (
+        (isset($representation['mimeType']) && strpos($representation['mimeType'], 'webm') !== false) ||
+        (isset($representation['codecs']) && strpos($representation['codecs'], 'vp9') !== false)
+    ) {
+        echo "DEBUG: WebM detected for Representation ID: " . (isset($representation['id']) ? $representation['id'] : 'unknown') . "\n";
+        global $logger;
+        $logger->test(
+            "Segment Validations",
+            "WebM Detection",
+            "WebM segments are not supported by the ISO Segment Validator",
+            false,
+            "WARN",
+            "Skipped validation for Representation ID: " . (isset($representation['id']) ? $representation['id'] : 'unknown') . " (WebM detected)",
+            "WebM segments are not supported Currently"
+        );
+        return null; // Skip further validation for this segment
+    } else {
+        echo "DEBUG: Not WebM, proceeding with validation for Representation ID: " . (isset($representation['id']) ? $representation['id'] : 'unknown') . "\n";
+    }
+
+
     $validatorWrapper->run($period, $adaptation_set, $representation);
 
 
